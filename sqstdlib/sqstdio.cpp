@@ -5,39 +5,125 @@
 #include <squirrel.h>
 #include <sqstdio.h>
 #include "sqstdstream.h"
+#ifdef SQPHYSFS
+#include <physfs.h>
+#include <wchar.h>
+#endif //SQPHYSFS
 
 #define SQSTD_FILE_TYPE_TAG (SQSTD_STREAM_TYPE_TAG | 0x00000001)
 //basic API
 SQFILE sqstd_fopen(const SQChar *filename ,const SQChar *mode)
 {
 #ifndef SQUNICODE
+#ifndef SQPHYSFS
 	return (SQFILE)fopen(filename,mode);
 #else
+
+	SQFILE f;
+	if( strcmp( mode,"r")==0 || strcmp( mode,"rb")==0 ) {
+		f = (SQFILE) PHYSFS_openRead( filename );
+	} else if( strcmp( mode,"w")==0 || strcmp( mode,"wb")==0 ) {
+		f = (SQFILE) PHYSFS_openWrite( filename );
+	} else if( strcmp( mode,"a")==0 || strcmp( mode,"ab")==0 ) {
+		f = (SQFILE) PHYSFS_openAppend( filename );
+	} else {
+		f = NULL;
+	}
+	return f;
+#endif //SQPHYSFS
+#else
+#ifndef SQPHYSFS
 	return (SQFILE)_wfopen(filename,mode);
-#endif
+#else
+	int len = wcslen(filename);
+	char *buff = new char[ ( len+1)*sizeof(wchar_t) ];
+	if( sizeof(wchar_t)==2 ){
+		PHYSFS_utf8FromUcs2( (PHYSFS_uint16*) filename, buff, len+1 );
+	}else if( sizeof(wchar_t)==4 ){ 
+		PHYSFS_utf8FromUcs4( (PHYSFS_uint32*) filename, buff, len+1 );
+	}
+
+	SQFILE f;
+	
+	if( wcscmp( mode,L"r")==0 || wcscmp( mode,L"rb")==0 ) {
+		f = (SQFILE) PHYSFS_openRead( buff );
+	} else if( wcscmp( mode,L"w")==0 || wcscmp( mode,L"wb")==0 ) {
+		f = (SQFILE) PHYSFS_openWrite( buff );
+	} else if( wcscmp( mode,L"a")==0 || wcscmp( mode,L"ab")==0 ) {
+		f = (SQFILE) PHYSFS_openAppend( buff );
+	} else {
+		f = NULL;
+	}
+	delete[] buff;
+	return f;
+#endif //SQPHYSFS
+#endif //SQUNICODE
 }
 
 SQInteger sqstd_fread(void* buffer, SQInteger size, SQInteger count, SQFILE file)
 {
+#ifndef SQPHYSFS
 	SQInteger ret = (SQInteger)fread(buffer,size,count,(FILE *)file);
 	return ret;
+#else
+	SQInteger ret = PHYSFS_read( (PHYSFS_File*) file, buffer, size, count );
+	return ret;
+#endif //SQPHYSFS
+}
+
+SQInteger sqstd_flen(SQFILE file)
+{
+#ifndef SQPHYSFS
+	SQInteger prevpos=sqstd_ftell(file);
+	sqstd_fseek(file,0,SQ_SEEK_END);
+	SQInteger size=sqstd_ftell(file);
+	sqstd_fseek(file,prevpos,SQ_SEEK_SET);
+	return size;
+#else
+	return PHYSFS_fileLength( (PHYSFS_File*) file );
+#endif //SQPHYSFS
 }
 
 SQInteger sqstd_fgets(void* buffer, SQInteger size, SQFILE file)
 {
+#ifndef SQPHYSFS
 	char *p = fgets((char*)buffer,size,(FILE *)file);
 	if (!p)
 		return 0;
 	return (SQInteger)strlen(p);
+#else
+	char *p = (char*) buffer;
+	if( sqstd_feof( file ) || size<=0 || sqstd_ftell(file)==sqstd_flen(file) ) {
+		return 0;
+	}
+	SQInteger len=0;
+	int run = 1;
+	while( run && len!=size ){
+		run = 0;
+
+		run = sqstd_fread( p, 1, 1, file );
+		if( (*p)=='\n' ){
+			run = 0;
+		}
+		p++;
+		len++;
+	}
+	return len;
+#endif //SQPHYSFS
 }
 
 SQInteger sqstd_fwrite(const SQUserPointer buffer, SQInteger size, SQInteger count, SQFILE file)
 {
+#ifndef SQPHYSFS
 	return (SQInteger)fwrite(buffer,size,count,(FILE *)file);
+#else
+	return (SQInteger) PHYSFS_write( (PHYSFS_File*) file, buffer, size, count );
+#endif //SQPHYSFS
 }
 
 SQInteger sqstd_fseek(SQFILE file, SQInteger offset, SQInteger origin)
 {
+#ifndef SQPHYSFS
 	SQInteger realorigin;
 	switch(origin) {
 		case SQ_SEEK_CUR: realorigin = SEEK_CUR; break;
@@ -46,26 +132,80 @@ SQInteger sqstd_fseek(SQFILE file, SQInteger offset, SQInteger origin)
 		default: return -1; //failed
 	}
 	return fseek((FILE *)file,(long)offset,(int)realorigin);
+#else
+	PHYSFS_File *handle = (PHYSFS_File *) file;
+	PHYSFS_sint64 pos = 0, len, current;
+
+	switch( origin ) {
+		case SQ_SEEK_SET:
+			pos = offset;
+			break;
+		case SQ_SEEK_CUR:
+			current = PHYSFS_tell(handle);
+			if (current == -1) {
+				return -1;
+			}
+			pos = current;
+			if (offset == 0)
+				return 0;
+			pos += offset;
+			break;
+		case SQ_SEEK_END:
+			len = PHYSFS_fileLength(handle);
+			if (len == -1) {
+				return -1;
+			}
+			pos = len;
+			pos += offset;
+			break;
+		default:
+			return -1; //failed
+	}
+
+	if ( pos < 0 ) {
+		return -1;
+	}
+	if (!PHYSFS_seek(handle, pos)) {
+		return -1;
+	}
+	return 0;
+#endif
 }
 
 SQInteger sqstd_ftell(SQFILE file)
 {
+#ifndef SQPHYSFS
 	return ftell((FILE *)file);
+#else
+	return PHYSFS_tell( (PHYSFS_File*) file );
+#endif //SQPHYSFS
 }
 
 SQInteger sqstd_fflush(SQFILE file)
 {
+#ifndef SQPHYSFS
 	return fflush((FILE *)file);
+#else
+	return PHYSFS_flush( (PHYSFS_File*) file );
+#endif //SQPHYSFS
 }
 
 SQInteger sqstd_fclose(SQFILE file)
 {
+#ifndef SQPHYSFS
 	return fclose((FILE *)file);
+#else
+	return PHYSFS_close( (PHYSFS_File*) file );
+#endif //SQPHYSFS
 }
 
 SQInteger sqstd_feof(SQFILE file)
 {
+#ifndef SQPHYSFS
 	return feof((FILE *)file);
+#else
+	return PHYSFS_eof((PHYSFS_File *)file);
+#endif //SQPHYSFS
 }
 
 //File
@@ -104,12 +244,9 @@ struct SQFile : public SQStream {
 		return sqstd_ftell(_handle);
 	}
 	SQInteger Len() {
-		SQInteger prevpos=Tell();
-		Seek(0,SQ_SEEK_END);
-		SQInteger size=Tell();
-		Seek(prevpos,SQ_SEEK_SET);
-		return size;
+		return sqstd_flen(_handle);
 	}
+
 	SQInteger Seek(SQInteger offset, SQInteger origin)	{
 		return sqstd_fseek(_handle,offset,origin);
 	}
@@ -424,7 +561,7 @@ SQRESULT sqstd_dofile(HSQUIRRELVM v,const SQChar *filename,SQBool retval,SQBool 
 
 SQRESULT sqstd_writeclosuretofile(HSQUIRRELVM v,const SQChar *filename)
 {
-	SQFILE file = sqstd_fopen(filename,_SC("wb+"));
+	SQFILE file = sqstd_fopen(filename,_SC("wb"));
 	if(!file) return sq_throwerror(v,_SC("cannot open the file"));
 	if(SQ_SUCCEEDED(sq_writeclosure(v,file_write,file))) {
 		sqstd_fclose(file);

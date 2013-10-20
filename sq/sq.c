@@ -17,6 +17,10 @@
 #include <sqstdstring.h>
 #include <sqstdaux.h>
 
+#ifdef SQPHYSFS
+#include <physfs.h>
+#endif //SQPHYSFS
+
 #ifdef SQUNICODE
 #define scfprintf fwprintf
 #define scfopen	_wfopen
@@ -319,6 +323,13 @@ void Interactive(HSQUIRRELVM v)
 
 int main(int argc, char* argv[])
 {
+#ifdef SQPHYSFS
+	PHYSFS_init(argv[0]);
+	
+	PHYSFS_addToSearchPath(".",0);
+	PHYSFS_setWriteDir(".");
+	PHYSFS_permitSymbolicLinks(1);
+#endif //SQPHYSFS
 	HSQUIRRELVM v;
 	SQInteger retval = 0;
 	const SQChar *filename=NULL;
@@ -363,6 +374,9 @@ int main(int argc, char* argv[])
 	}
 
 	sq_close(v);
+#ifdef SQPHYSFS
+	PHYSFS_deinit();
+#endif //SQPHYSFS
 	
 #if defined(_MSC_VER) && defined(_DEBUG)
 	_getch();

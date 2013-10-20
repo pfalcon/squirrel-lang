@@ -3,7 +3,6 @@ SQUIRREL= ..
 
 OUT= $(SQUIRREL)/lib/libsquirrel.a
 INCZ= -I$(SQUIRREL)/include -I. -Iinclude
-DEFS= 
 LIB=	
 
 OBJS= \

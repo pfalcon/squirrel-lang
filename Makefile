@@ -1,6 +1,11 @@
 
 SQUIRREL=.
 MAKE=make
+ifndef DEFS
+export DEFS=#-DSQPHYSFS
+else
+export DEFS
+endif
 
 sq32:
 	cd squirrel; $(MAKE) 

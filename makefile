@@ -12,15 +12,19 @@
 #
 
 TOP ?= .
-OPT = -s -O2
+OPT = -s -O2 -DSQPHYSFS
 # Some Squirrel compile-time options:
 # -DNO_GARBAGE_COLLECTOR
 # -DNO_COMPILER
 # -D_DEBUG_DUMP
+# -DSQPHYSFS
 # -Wl,-Map=$@.map,--cref
 INCLUDE = -I$(TOP)/include $(INCLUDE_EXTRA)
 CFLAGS = $(OPT) $(OPT_EXTRA) $(INCLUDE) -fno-strict-aliasing -fno-unwind-tables -fno-asynchronous-unwind-tables
 CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti
+LDLIBS = 
+# Libraries:
+#   -lphysfs
 
 SQUIRREL_OBJS = \
 squirrel/sqapi.o \
